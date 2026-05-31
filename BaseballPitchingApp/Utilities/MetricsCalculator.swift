@@ -11,26 +11,24 @@ enum MetricsCalculator {
             return ThrowMetrics()
         }
 
+        // 1. Stride Length: Farthest distance between ankle nodes
         let stridePixels = maximumStrideDistance(in: frames)
-        let releaseAnalysis = releaseFrameAnalysis(in: frames)
-        
-        // Calibration: Use pitcher's height as a reference if possible.
-        // For MVP, we'll use a heuristic: average male height is ~5.8 ft.
-        // We'll estimate pixels-to-feet using the shoulder-to-ankle distance at a stable frame.
         let pixelsToFeet = estimatePixelsToFeet(in: frames)
         let strideFeet = stridePixels.map { $0 * pixelsToFeet }
+
+        // 2. Release Point & Speed: Max wrist velocity frame
+        let speedAnalysis = calculateSpeedAndRelease(in: frames, pixelsToFeet: pixelsToFeet)
         
-        // Pitching Speed: Distance from release to "plate" (estimated)
-        // Since we don't have the plate, we'll estimate speed based on hand velocity at release.
-        let speedMPH = estimatePitchSpeed(in: frames, releaseFrameIndex: releaseAnalysis?.frameIndex)
+        // 3. Arm Slot: Angle between wrist and non-dominant shoulder at release
+        let armSlotAnalysis = calculateArmSlotAtRelease(in: frames, releaseIndex: speedAnalysis.releaseIndex)
 
         return ThrowMetrics(
             relativeStridePixels: stridePixels,
-            releasePointHeight: releaseAnalysis?.releasePointHeight,
-            shoulderAngleDegrees: releaseAnalysis?.shoulderAngleDegrees,
-            armSlotDegrees: releaseAnalysis?.armSlotDegrees,
-            armSlotLabel: armSlotLabel(for: releaseAnalysis?.armSlotDegrees),
-            estimatedPitchSpeedMPH: speedMPH,
+            releasePointHeight: armSlotAnalysis.releaseHeight,
+            shoulderAngleDegrees: armSlotAnalysis.shoulderAngle,
+            armSlotDegrees: armSlotAnalysis.armSlotDegrees,
+            armSlotLabel: armSlotLabel(for: armSlotAnalysis.armSlotDegrees),
+            estimatedPitchSpeedMPH: speedAnalysis.speedMPH,
             strideLengthFeet: strideFeet
         )
     }
@@ -58,77 +56,91 @@ private extension MetricsCalculator {
         .max()
     }
 
-    static func releaseFrameAnalysis(in frames: [PerFrameLandmarks]) -> ReleaseAnalysis? {
-        var bestDistance = Double.greatestFiniteMagnitude
-        var bestAnalysis: ReleaseAnalysis?
-
-        for (index, frame) in frames.enumerated() {
-            // Check right arm
-            if let analysis = analyzeArm(
-                wristName: "rightWrist",
-                elbowName: "rightElbow",
-                shoulderName: "rightShoulder",
-                oppositeShoulderName: "leftShoulder",
-                in: frame.landmarks
-            ), analysis.distanceToShoulder < bestDistance {
-                bestDistance = analysis.distanceToShoulder
-                bestAnalysis = ReleaseAnalysis(
-                    frameIndex: index,
-                    releasePointHeight: analysis.releasePointHeight,
-                    shoulderAngleDegrees: analysis.shoulderAngleDegrees,
-                    armSlotDegrees: analysis.armSlotDegrees
-                )
-            }
+    static func calculateSpeedAndRelease(in frames: [PerFrameLandmarks], pixelsToFeet: Double) -> (speedMPH: Double?, releaseIndex: Int?) {
+        var maxVelocity = 0.0
+        var releaseIndex: Int? = nil
+        
+        // Determine which wrist is moving faster to identify throwing arm
+        let isRightHanded = detectIfRightHanded(in: frames)
+        let wristName = isRightHanded ? "rightWrist" : "leftWrist"
+        
+        for i in 0..<(frames.count - 1) {
+            guard let w1 = point(named: wristName, in: frames[i].landmarks),
+                  let w2 = point(named: wristName, in: frames[i+1].landmarks) else { continue }
             
-            // Check left arm
-            if let analysis = analyzeArm(
-                wristName: "leftWrist",
-                elbowName: "leftElbow",
-                shoulderName: "leftShoulder",
-                oppositeShoulderName: "rightShoulder",
-                in: frame.landmarks
-            ), analysis.distanceToShoulder < bestDistance {
-                bestDistance = analysis.distanceToShoulder
-                bestAnalysis = ReleaseAnalysis(
-                    frameIndex: index,
-                    releasePointHeight: analysis.releasePointHeight,
-                    shoulderAngleDegrees: analysis.shoulderAngleDegrees,
-                    armSlotDegrees: analysis.armSlotDegrees
-                )
+            let dist = distance(from: w1, to: w2)
+            let time = frames[i+1].timestamp - frames[i].timestamp
+            guard time > 0 else { continue }
+            
+            let velocity = dist / time
+            if velocity > maxVelocity {
+                maxVelocity = velocity
+                releaseIndex = i
             }
         }
-
-        return bestAnalysis
+        
+        guard let idx = releaseIndex, idx + 1 < frames.count else { return (nil, nil) }
+        
+        // Calculate speed using release frame and the one after
+        guard let wStart = point(named: wristName, in: frames[idx].landmarks),
+              let wEnd = point(named: wristName, in: frames[idx+1].landmarks) else { return (nil, idx) }
+        
+        let pixelDist = distance(from: wStart, to: wEnd)
+        let feetDist = pixelDist * pixelsToFeet
+        let timeSec = frames[idx+1].timestamp - frames[idx].timestamp
+        
+        let speedMPH = (feetDist / timeSec) * 0.681818
+        return (speedMPH, idx)
     }
 
-    static func analyzeArm(
-        wristName: String,
-        elbowName: String,
-        shoulderName: String,
-        oppositeShoulderName: String,
-        in landmarks: [BodyLandmark]
-    ) -> (distanceToShoulder: Double, releasePointHeight: Double, shoulderAngleDegrees: Double, armSlotDegrees: Double)? {
-        guard
-            let wrist = point(named: wristName, in: landmarks),
-            let elbow = point(named: elbowName, in: landmarks),
-            let shoulder = point(named: shoulderName, in: landmarks),
-            let oppositeShoulder = point(named: oppositeShoulderName, in: landmarks)
-        else {
-            return nil
-        }
-
-        let wristToShoulderDistance = distance(from: wrist, to: shoulder)
-        let shoulderAngle = angleFromHorizontal(from: shoulder, to: oppositeShoulder)
+    static func calculateArmSlotAtRelease(in frames: [PerFrameLandmarks], releaseIndex: Int?) -> (armSlotDegrees: Double?, releaseHeight: Double?, shoulderAngle: Double?) {
+        guard let idx = releaseIndex else { return (nil, nil, nil) }
+        let frame = frames[idx]
         
-        // Improved Arm Slot Calculation
-        let armSlot = calculateArmSlotDegrees(shoulder: shoulder, elbow: elbow, wrist: wrist)
+        let isRightHanded = detectIfRightHanded(in: frames)
+        let throwingWristName = isRightHanded ? "rightWrist" : "leftWrist"
+        let nonDominantShoulderName = isRightHanded ? "leftShoulder" : "rightShoulder"
+        let dominantShoulderName = isRightHanded ? "rightShoulder" : "leftShoulder"
+        
+        guard let wrist = point(named: throwingWristName, in: frame.landmarks),
+              let nonDomShoulder = point(named: nonDominantShoulderName, in: frame.landmarks),
+              let domShoulder = point(named: dominantShoulderName, in: frame.landmarks) else {
+            return (nil, nil, nil)
+        }
+        
+        // Arm Slot: Angle of line between wrist and non-dominant shoulder
+        // 0 = sidearm (horizontal), 90 = over-the-top (vertical up), -90 = submarine (vertical down)
+        let dx = wrist.x - nonDomShoulder.x
+        let dy = -(wrist.y - nonDomShoulder.y) // Invert Y for standard Cartesian
+        
+        // Adjust for handedness: if right-handed, sidearm is positive X. If left-handed, sidearm is negative X.
+        let adjustedDx = isRightHanded ? dx : -dx
+        let radians = atan2(dy, abs(adjustedDx))
+        let degrees = radians * 180 / .pi
+        
+        let shoulderAngle = angleFromHorizontal(from: domShoulder, to: nonDomShoulder)
+        
+        return (degrees, Double(wrist.y), shoulderAngle)
+    }
 
-        return (
-            distanceToShoulder: wristToShoulderDistance,
-            releasePointHeight: Double(wrist.y),
-            shoulderAngleDegrees: shoulderAngle,
-            armSlotDegrees: armSlot
-        )
+    static func detectIfRightHanded(in frames: [PerFrameLandmarks]) -> Bool {
+        // Simple heuristic: which wrist travels further in X direction?
+        var rightXDist = 0.0
+        var leftXDist = 0.0
+        
+        guard let firstFrame = frames.first, let lastFrame = frames.last else { return true }
+        
+        if let r1 = point(named: "rightWrist", in: firstFrame.landmarks),
+           let r2 = point(named: "rightWrist", in: lastFrame.landmarks) {
+            rightXDist = abs(r2.x - r1.x)
+        }
+        
+        if let l1 = point(named: "leftWrist", in: firstFrame.landmarks),
+           let l2 = point(named: "leftWrist", in: lastFrame.landmarks) {
+            leftXDist = abs(l2.x - l1.x)
+        }
+        
+        return rightXDist >= leftXDist
     }
 
     static func armSlotLabel(for degrees: Double?) -> String {
@@ -136,7 +148,7 @@ private extension MetricsCalculator {
             return "Not Calculated"
         }
 
-        // New Labeling based on user request:
+        // Labeling based on user request convention:
         // 90 = Over the top
         // 0 = Sidearm
         // -90 = Submarine
@@ -170,29 +182,6 @@ private extension MetricsCalculator {
         return abs(Double(radians) * 180 / .pi)
     }
 
-    /// Calculates arm slot in degrees.
-    /// 0° = sidearm (horizontal)
-    /// 90° = over-the-top (vertical up)
-    /// -90° = submarine (vertical down)
-    static func calculateArmSlotDegrees(shoulder: CGPoint, elbow: CGPoint, wrist: CGPoint) -> Double {
-        // Vector from shoulder to wrist (better represents overall arm slot than just forearm)
-        let dx = wrist.x - shoulder.x
-        let dy = -(wrist.y - shoulder.y) // Invert Y because screen coordinates have Y increasing downwards
-        
-        // atan2(dy, dx) gives angle in radians from positive X-axis
-        let radians = atan2(dy, dx)
-        var degrees = radians * 180 / .pi
-        
-        // Normalize: If we assume the pitcher is facing right (positive X)
-        // Over the top (vertical up) is 90
-        // Sidearm (horizontal) is 0
-        // Submarine (vertical down) is -90
-        
-        // If the pitcher is facing left, we'd need to flip the DX.
-        // Let's detect orientation based on shoulder positions.
-        return degrees
-    }
-
     static func estimatePixelsToFeet(in frames: [PerFrameLandmarks]) -> Double {
         // Estimate based on shoulder-to-ankle distance (approx 75% of total height)
         // Average height ~5.8 ft -> Shoulder to ankle ~4.35 ft
@@ -203,23 +192,5 @@ private extension MetricsCalculator {
         }
         guard let avgDistance = distances.first else { return 0.01 } // Fallback
         return 4.35 / avgDistance
-    }
-
-    static func estimatePitchSpeed(in frames: [PerFrameLandmarks], releaseFrameIndex: Int?) -> Double? {
-        guard let releaseIndex = releaseFrameIndex, releaseIndex + 2 < frames.count else { return nil }
-        
-        let f1 = frames[releaseIndex]
-        let f2 = frames[releaseIndex + 2]
-        
-        guard let w1 = point(named: "rightWrist", in: f1.landmarks),
-              let w2 = point(named: "rightWrist", in: f2.landmarks) else { return nil }
-        
-        let pixelDist = distance(from: w1, to: w2)
-        let feetDist = pixelDist * estimatePixelsToFeet(in: frames)
-        let timeSec = f2.timestamp - f1.timestamp
-        
-        guard timeSec > 0 else { return nil }
-        let feetPerSec = feetDist / timeSec
-        return feetPerSec * 0.681818 // Convert fps to mph
     }
 }
