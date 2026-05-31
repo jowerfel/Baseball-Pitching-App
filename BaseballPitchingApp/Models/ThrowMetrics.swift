@@ -8,6 +8,7 @@ struct ThrowMetrics: Codable, Hashable, Sendable {
     var armSlotLabel: String
     var pitchingHand: PitchingHand?
     var estimatedPitchSpeedMPH: Double?
+    var strideLengthFeet: Double?
 
     init(
         relativeStridePixels: Double? = nil,
@@ -16,7 +17,8 @@ struct ThrowMetrics: Codable, Hashable, Sendable {
         armSlotDegrees: Double? = nil,
         armSlotLabel: String = "Not Calculated",
         pitchingHand: PitchingHand? = nil,
-        estimatedPitchSpeedMPH: Double? = nil
+        estimatedPitchSpeedMPH: Double? = nil,
+        strideLengthFeet: Double? = nil
     ) {
         self.relativeStridePixels = relativeStridePixels
         self.releasePointHeight = releasePointHeight
@@ -25,12 +27,24 @@ struct ThrowMetrics: Codable, Hashable, Sendable {
         self.armSlotLabel = armSlotLabel
         self.pitchingHand = pitchingHand
         self.estimatedPitchSpeedMPH = estimatedPitchSpeedMPH
+        self.strideLengthFeet = strideLengthFeet
     }
 }
 
 extension ThrowMetrics {
     var relativeStrideDisplayValue: String {
-        formatted(relativeStridePixels, suffix: "px")
+        guard let pixels = relativeStridePixels else { return "Not Calculated" }
+        // We'll store the converted value in a new property or calculate it here if we have a scale
+        // For now, let's assume we'll add a 'strideLengthFeet' property
+        return strideLengthDisplayValue ?? "\(formatted(pixels, suffix: "px"))"
+    }
+
+    var strideLengthDisplayValue: String? {
+        guard let feet = strideLengthFeet else { return nil }
+        let totalInches = Int(round(feet * 12))
+        let ft = totalInches / 12
+        let inch = totalInches % 12
+        return "\(ft)' \(inch)\""
     }
 
     var releasePointHeightDisplayValue: String {

@@ -88,24 +88,35 @@ struct ComparisonView: View {
                     if let sessionA = viewModel.sessionA, let sessionB = viewModel.sessionB {
                         VStack(spacing: 10) {
                             metricDeltaRow(
-                                title: "Relative Stride",
-                                valueA: sessionA.metrics.relativeStrideDisplayValue,
-                                valueB: sessionB.metrics.relativeStrideDisplayValue,
+                                title: "Pitch Speed",
+                                valueA: sessionA.metrics.estimatedPitchSpeedDisplayValue,
+                                valueB: sessionB.metrics.estimatedPitchSpeedDisplayValue,
                                 delta: numericDelta(
-                                    from: sessionA.metrics.relativeStridePixels,
-                                    to: sessionB.metrics.relativeStridePixels,
-                                    suffix: "px"
+                                    from: sessionA.metrics.estimatedPitchSpeedMPH,
+                                    to: sessionB.metrics.estimatedPitchSpeedMPH,
+                                    suffix: "mph"
                                 )
                             )
 
                             metricDeltaRow(
-                                title: "Release Height",
-                                valueA: sessionA.metrics.releasePointHeightDisplayValue,
-                                valueB: sessionB.metrics.releasePointHeightDisplayValue,
+                                title: "Stride Length",
+                                valueA: sessionA.metrics.relativeStrideDisplayValue,
+                                valueB: sessionB.metrics.relativeStrideDisplayValue,
                                 delta: numericDelta(
-                                    from: sessionA.metrics.releasePointHeight,
-                                    to: sessionB.metrics.releasePointHeight,
-                                    suffix: ""
+                                    from: sessionA.metrics.strideLengthFeet,
+                                    to: sessionB.metrics.strideLengthFeet,
+                                    suffix: "ft"
+                                )
+                            )
+
+                            metricDeltaRow(
+                                title: "Arm Slot",
+                                valueA: sessionA.metrics.armSlotDisplayValue,
+                                valueB: sessionB.metrics.armSlotDisplayValue,
+                                delta: numericDelta(
+                                    from: sessionA.metrics.armSlotDegrees,
+                                    to: sessionB.metrics.armSlotDegrees,
+                                    suffix: "deg"
                                 )
                             )
 
@@ -118,13 +129,6 @@ struct ComparisonView: View {
                                     to: sessionB.metrics.shoulderAngleDegrees,
                                     suffix: "deg"
                                 )
-                            )
-
-                            metricDeltaRow(
-                                title: "Arm Slot",
-                                valueA: sessionA.metrics.armSlotLabel,
-                                valueB: sessionB.metrics.armSlotLabel,
-                                delta: armSlotDelta(sessionA.metrics.armSlotLabel, sessionB.metrics.armSlotLabel)
                             )
                         }
                     } else {

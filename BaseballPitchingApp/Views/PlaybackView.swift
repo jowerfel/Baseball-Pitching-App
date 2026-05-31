@@ -105,10 +105,10 @@ struct PlaybackView: View {
 
                 if let metrics = viewModel.selectedSession?.metrics {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        metricCard(title: "Relative Stride", value: metrics.relativeStrideDisplayValue)
-                        metricCard(title: "Release Height", value: metrics.releasePointHeightDisplayValue)
+                        metricCard(title: "Pitch Speed", value: metrics.estimatedPitchSpeedDisplayValue)
+                        metricCard(title: "Stride Length", value: metrics.relativeStrideDisplayValue)
+                        metricCard(title: "Arm Slot", value: metrics.armSlotDisplayValue)
                         metricCard(title: "Shoulder Angle", value: metrics.shoulderAngleDisplayValue)
-                        metricCard(title: "Arm Slot", value: metrics.armSlotLabel)
                     }
                 }
 
