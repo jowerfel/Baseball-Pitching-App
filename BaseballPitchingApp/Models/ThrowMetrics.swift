@@ -9,6 +9,7 @@ struct ThrowMetrics: Codable, Hashable, Sendable {
     var pitchingHand: PitchingHand?
     var estimatedPitchSpeedMPH: Double?
     var strideLengthFeet: Double?
+    var releaseFrameIndex: Int?
 
     init(
         relativeStridePixels: Double? = nil,
@@ -18,7 +19,8 @@ struct ThrowMetrics: Codable, Hashable, Sendable {
         armSlotLabel: String = "Not Calculated",
         pitchingHand: PitchingHand? = nil,
         estimatedPitchSpeedMPH: Double? = nil,
-        strideLengthFeet: Double? = nil
+        strideLengthFeet: Double? = nil,
+        releaseFrameIndex: Int? = nil
     ) {
         self.relativeStridePixels = relativeStridePixels
         self.releasePointHeight = releasePointHeight
@@ -28,6 +30,7 @@ struct ThrowMetrics: Codable, Hashable, Sendable {
         self.pitchingHand = pitchingHand
         self.estimatedPitchSpeedMPH = estimatedPitchSpeedMPH
         self.strideLengthFeet = strideLengthFeet
+        self.releaseFrameIndex = releaseFrameIndex
     }
 }
 

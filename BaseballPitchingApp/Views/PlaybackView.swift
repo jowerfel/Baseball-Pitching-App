@@ -64,20 +64,42 @@ struct PlaybackView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    Slider(
-                        value: Binding(
-                            get: { min(viewModel.currentTime, viewModel.duration) },
-                            set: { viewModel.seek(to: $0) }
-                        ),
-                        in: 0...max(viewModel.duration, 0.1),
-                        onEditingChanged: { isEditing in
-                            if isEditing {
-                                viewModel.beginScrubbing()
-                            } else {
-                                viewModel.endScrubbing()
+                    ZStack(alignment: .leading) {
+                        Slider(
+                            value: Binding(
+                                get: { min(viewModel.currentTime, viewModel.duration) },
+                                set: { viewModel.seek(to: $0) }
+                            ),
+                            in: 0...max(viewModel.duration, 0.1),
+                            onEditingChanged: { isEditing in
+                                if isEditing {
+                                    viewModel.beginScrubbing()
+                                } else {
+                                    viewModel.endScrubbing()
+                                }
                             }
+                        )
+                        
+                        // Release point marker
+                        if let session = viewModel.selectedSession,
+                           let releaseIdx = session.metrics.releaseFrameIndex,
+                           releaseIdx < session.landmarks.count,
+                           viewModel.duration > 0 {
+                            let releaseTime = session.landmarks[releaseIdx].timestamp
+                            let progress = releaseTime / viewModel.duration
+                            
+                            GeometryReader { geometry in
+                                Circle()
+                                    .fill(.red)
+                                    .frame(width: 8, height: 8)
+                                    .overlay(Circle().stroke(.white, lineWidth: 1))
+                                    .position(x: geometry.size.width * progress, y: geometry.size.height / 2)
+                                    .help("Release Point")
+                            }
+                            .frame(height: 12)
+                            .allowsHitTesting(false)
                         }
-                    )
+                    }
 
                     HStack {
                         Text(timeLabel(viewModel.currentTime))

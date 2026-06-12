@@ -29,7 +29,8 @@ enum MetricsCalculator {
             armSlotDegrees: armSlotAnalysis.armSlotDegrees,
             armSlotLabel: armSlotLabel(for: armSlotAnalysis.armSlotDegrees),
             estimatedPitchSpeedMPH: speedAnalysis.speedMPH,
-            strideLengthFeet: strideFeet
+            strideLengthFeet: strideFeet,
+            releaseFrameIndex: speedAnalysis.releaseIndex
         )
     }
 }
