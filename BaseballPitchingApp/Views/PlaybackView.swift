@@ -64,42 +64,20 @@ struct PlaybackView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    ZStack(alignment: .leading) {
-                        Slider(
-                            value: Binding(
-                                get: { min(viewModel.currentTime, viewModel.duration) },
-                                set: { viewModel.seek(to: $0) }
-                            ),
-                            in: 0...max(viewModel.duration, 0.1),
-                            onEditingChanged: { isEditing in
-                                if isEditing {
-                                    viewModel.beginScrubbing()
-                                } else {
-                                    viewModel.endScrubbing()
-                                }
+                    Slider(
+                        value: Binding(
+                            get: { min(viewModel.currentTime, viewModel.duration) },
+                            set: { viewModel.seek(to: $0) }
+                        ),
+                        in: 0...max(viewModel.duration, 0.1),
+                        onEditingChanged: { isEditing in
+                            if isEditing {
+                                viewModel.beginScrubbing()
+                            } else {
+                                viewModel.endScrubbing()
                             }
-                        )
-                        
-                        // Release point marker
-                        if let session = viewModel.selectedSession,
-                           let releaseIdx = session.metrics.releaseFrameIndex,
-                           releaseIdx < session.landmarks.count,
-                           viewModel.duration > 0 {
-                            let releaseTime = session.landmarks[releaseIdx].timestamp
-                            let progress = releaseTime / viewModel.duration
-                            
-                            GeometryReader { geometry in
-                                Circle()
-                                    .fill(.red)
-                                    .frame(width: 8, height: 8)
-                                    .overlay(Circle().stroke(.white, lineWidth: 1))
-                                    .position(x: geometry.size.width * progress, y: geometry.size.height / 2)
-                                    .help("Release Point")
-                            }
-                            .frame(height: 12)
-                            .allowsHitTesting(false)
                         }
-                    }
+                    )
 
                     HStack {
                         Text(timeLabel(viewModel.currentTime))
@@ -127,10 +105,10 @@ struct PlaybackView: View {
 
                 if let metrics = viewModel.selectedSession?.metrics {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        metricCard(title: "Pitch Speed", value: metrics.estimatedPitchSpeedDisplayValue)
-                        metricCard(title: "Stride Length", value: metrics.relativeStrideDisplayValue)
-                        metricCard(title: "Arm Slot", value: metrics.armSlotDisplayValue)
+                        metricCard(title: "Relative Stride", value: metrics.relativeStrideDisplayValue)
+                        metricCard(title: "Release Height", value: metrics.releasePointHeightDisplayValue)
                         metricCard(title: "Shoulder Angle", value: metrics.shoulderAngleDisplayValue)
+                        metricCard(title: "Arm Slot", value: metrics.armSlotLabel)
                     }
                 }
 
@@ -165,8 +143,13 @@ struct PlaybackView: View {
         guard let session else {
             return "A processed session will appear here once recording and analysis are implemented."
         }
+        
+        let date = session.date.formatted(date: .abbreviated, time: .shortened)
+        if let pitchNumber = session.metrics.pitchNumber {
+            return "Pitch #\(pitchNumber) from \(date) is ready."
+        }
 
-        return "Session from \(session.date.formatted(date: .abbreviated, time: .shortened)) is ready for playback."
+        return "Session from \(date) is ready for playback."
     }
 
     private func timeLabel(_ value: Double) -> String {
@@ -192,3 +175,4 @@ struct PlaybackView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
+

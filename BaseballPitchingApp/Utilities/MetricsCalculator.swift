@@ -35,7 +35,7 @@ enum MetricsCalculator {
     }
 }
 
-private extension MetricsCalculator {
+extension MetricsCalculator {
     struct ReleaseAnalysis {
         let frameIndex: Int
         let releasePointHeight: Double?

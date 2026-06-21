@@ -14,6 +14,7 @@ final class CameraViewModel: ObservableObject {
     @Published private(set) var savedVideoURL: URL?
     @Published private(set) var processedLandmarks: [PerFrameLandmarks] = []
     @Published var playbackSession: ThrowSession?
+    @Published var detectedPitches: [ThrowSession] = []
 
     let cameraService: CameraService
     let previewSession: AVCaptureSession
@@ -41,7 +42,7 @@ final class CameraViewModel: ObservableObject {
             do {
                 try await cameraService.prepareSession()
                 await cameraService.startSession()
-                statusText = "Camera ready. Record a throw."
+                statusText = "Camera ready. Record your session."
                 errorMessage = nil
             } catch {
                 errorMessage = error.localizedDescription
@@ -78,12 +79,13 @@ final class CameraViewModel: ObservableObject {
                 savedVideoURL = nil
                 processedLandmarks = []
                 playbackSession = nil
+                detectedPitches = []
                 hasPersistedPlaybackSession = false
                 isRecording = true
                 isProcessing = false
                 processingProgressText = ""
                 errorMessage = nil
-                statusText = "Recording..."
+                statusText = "Recording session..."
                 startElapsedTimer()
             } catch {
                 errorMessage = error.localizedDescription
@@ -109,50 +111,70 @@ final class CameraViewModel: ObservableObject {
             }
         }
     }
+    func uploadedVideo(_ videoURL: URL){
+        Task {
+            do {
+                savedVideoURL = videoURL
+                elapsedTimeText = "00:00"
+                errorMessage = nil
+                try await processRecordedVideo(at: videoURL)
+            } catch {
+                errorMessage = error.localizedDescription
+                statusText = "Unable to stop recording."
+            }
+        }
 
+    }
+    
+    
+    
     private func processRecordedVideo(at url: URL) async throws {
         isProcessing = true
         processingProgressText = "Processing 0%"
-        statusText = "Analyzing recorded throw..."
+        statusText = "Splitting and analyzing pitches..."
 
-        let landmarks = try await videoProcessingService.processVideo(at: url) { [weak self] progress in
+        let pitchData = try await videoProcessingService.processVideo(at: url) { [weak self] progress in
             await MainActor.run {
-                guard let self else {
-                    return
-                }
-
+                guard let self else { return }
                 let percent = Int((progress * 100).rounded())
                 self.processingProgressText = "Processing \(percent)%"
             }
         }
 
-        processedLandmarks = landmarks.landmarks
-        playbackSession = ThrowSession(
-            date: .now,
-            videoURL: url.path(),
-            metrics: landmarks.metrics,
-            landmarks: landmarks.landmarks
-        )
+        self.detectedPitches = pitchData.map { data in
+            ThrowSession(
+                date: .now,
+                videoURL: url.path(),
+                metrics: data.metrics,
+                landmarks: data.landmarks
+            )
+        }
+
+        if let firstPitch = detectedPitches.first {
+            playbackSession = firstPitch
+            processedLandmarks = firstPitch.landmarks
+        }
+
         isProcessing = false
-        processingProgressText = landmarks.landmarks.isEmpty
-            ? "Processing complete with no landmarks detected."
-            : "Processing complete: \(landmarks.landmarks.count) sampled frames analyzed."
-        statusText = "Saved to \(url.lastPathComponent)"
+        processingProgressText = detectedPitches.isEmpty
+            ? "No pitches detected in this session."
+            : "Detected \(detectedPitches.count) pitches."
+        statusText = "Session analyzed."
     }
 
     func persistPlaybackSessionIfNeeded(in modelContext: ModelContext) {
-        guard let playbackSession, !hasPersistedPlaybackSession else {
-            return
-        }
+        guard !detectedPitches.isEmpty, !hasPersistedPlaybackSession else { return }
 
-        modelContext.insert(playbackSession)
+        for session in detectedPitches {
+            modelContext.insert(session)
+        }
 
         do {
             try modelContext.save()
             hasPersistedPlaybackSession = true
         } catch {
             errorMessage = error.localizedDescription
-            statusText = "Failed to save session."
+            statusText = "Failed to save pitches."
         }
     }
 
@@ -162,15 +184,11 @@ final class CameraViewModel: ObservableObject {
 
         recordingTask = Task { [weak self] in
             while let self, !Task.isCancelled {
-                guard let startedAt = self.recordingStartedAt else {
-                    return
-                }
-
+                guard let startedAt = self.recordingStartedAt else { return }
                 let elapsed = Int(Date().timeIntervalSince(startedAt))
                 let minutes = elapsed / 60
                 let seconds = elapsed % 60
                 self.elapsedTimeText = String(format: "%02d:%02d", minutes, seconds)
-
                 try? await Task.sleep(for: .seconds(1))
             }
         }

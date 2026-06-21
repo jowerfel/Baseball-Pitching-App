@@ -38,7 +38,7 @@ struct CameraView: View {
         .onDisappear {
             viewModel.onDisappear()
         }
-        .onChange(of: viewModel.playbackSession?.id) {
+        .onChange(of: viewModel.detectedPitches.count) {
             viewModel.persistPlaybackSessionIfNeeded(in: modelContext)
         }
         .alert("Camera Error", isPresented: errorBinding) {
@@ -97,13 +97,13 @@ struct CameraView: View {
                     .tint(.white)
             }
 
-            if let playbackSession = viewModel.playbackSession, !viewModel.isRecording, !viewModel.isProcessing {
+            if !viewModel.detectedPitches.isEmpty, !viewModel.isRecording, !viewModel.isProcessing {
                 NavigationLink {
-                    PlaybackView(session: playbackSession)
+                    SessionListView()
                 } label: {
                     HStack(spacing: 10) {
-                        Image(systemName: "play.fill")
-                        Text("Open Playback")
+                        Image(systemName: "list.bullet")
+                        Text("View \(viewModel.detectedPitches.count) Pitches")
                             .fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)

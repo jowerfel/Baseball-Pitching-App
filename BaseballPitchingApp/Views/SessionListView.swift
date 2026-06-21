@@ -52,14 +52,25 @@ private struct SessionRowView: View {
             SessionThumbnailView(videoPath: session.videoURL)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(session.date.formatted(date: .abbreviated, time: .shortened))
-                    .font(.headline)
+                HStack {
+                    Text(session.date.formatted(date: .abbreviated, time: .shortened))
+                        .font(.headline)
+                    
+                    if let pitchNumber = session.metrics.pitchNumber {
+                        Text("Pitch #\(pitchNumber)")
+                            .font(.caption.weight(.bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.cyan.opacity(0.2))
+                            .clipShape(Capsule())
+                    }
+                }
 
-                Text(session.metrics.armSlotLabel)
+                Text("\(session.metrics.armSlotLabel) • \(session.metrics.estimatedPitchSpeedDisplayValue)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
-                Text("Shoulder: \(session.metrics.shoulderAngleDisplayValue)")
+                Text("Stride: \(session.metrics.relativeStrideDisplayValue)")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
